@@ -1,0 +1,9 @@
+/exercices
+/plots
+/src
+/translation
+/tutorials
+*test*
+/.venv
+*.wav
+*.mp3
