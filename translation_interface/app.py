@@ -1,6 +1,8 @@
 import time
+import gc
 
 import streamlit as st
+import torch
 
 from translation import PreProcessed, transcribe, translate, load_models
 from lang_list import LANGUAGE_CODES
@@ -103,6 +105,12 @@ if st.session_state.get("running", False):
 
         # update time
         time_pos += STEP
+
+        # clear memory
+        del segment, transc, transl
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     progress_bar.progress(1.0)
     st.session_state.running = False
