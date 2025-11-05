@@ -1,14 +1,14 @@
 # app.py
 import streamlit as st
+import torch
 import streamlit.components.v1 as components
 import time
 import base64
 from translation import PreProcessed, transcribe, translate, load_models
 from lang_list import LANGUAGE_CODES
 
-
 STEP = 4
-OVERLAP = 2
+OVERLAP = 5
 
 st.set_page_config(layout="wide")
 st.title("Transcription and translation")
@@ -40,10 +40,23 @@ with col2:
 LANG_AUDIO = LANGUAGE_CODES[lang_audio]
 LANG_SUBTITLES = LANGUAGE_CODES[lang_subtitles]
 
-if "running" not in st.session_state:
-    st.session_state.running = False
+# models load button + state
+if "models_loaded" not in st.session_state:
+    st.session_state.models_loaded = False
+if "models_info" not in st.session_state:
+    st.session_state.models_info = None
 
-play_start = st.button("Play audio")
+col_load, col_play = st.columns([1, 2])
+with col_load:
+    if st.button("Load models for selected languages"):
+        with st.spinner("Loading models..."):
+            # call user-provided load_models function with current language codes
+            st.session_state.models_info = load_models(LANG_AUDIO)
+            st.session_state.models_loaded = True
+        st.success("Models loaded for: " + lang_audio + " → " + lang_subtitles)
+
+with col_play:
+    play_start = st.button("Play audio")
 
 col_left, col_right = st.columns(2)
 transcript_box = col_left.empty()
@@ -72,10 +85,10 @@ translation_box.markdown(
     unsafe_allow_html=True,
 )
 
-if play_start and not st.session_state.running:
+if play_start and not st.session_state.get("running", False):
     st.session_state.running = True
 
-if st.session_state.running:
+if st.session_state.get("running", False):
     audio_html = (
         f'<audio id="player" controls autoplay>'
         f'  <source src="{data_uri}" type="{mime}">'
@@ -101,8 +114,11 @@ if st.session_state.running:
         segment = pre.norm_data(start_time, end_time)
 
         gen_start = time.time()
+        # if the user loaded models, your load_models function is expected to have set up the
+        # necessary model state inside translation module; transcribe/translate can use that.
         text = transcribe(segment, max(min(OVERLAP, time_pos), 0.0))
         translated = translate(text, LANG_SUBTITLES) if text else ""
+        torch.cuda.empty_cache()
         gen_time = time.time() - gen_start
 
         display_at = playback_start + end_time + gen_time
@@ -123,7 +139,7 @@ if st.session_state.running:
             """,
             unsafe_allow_html=True,
         )
-        last_transcript = text
+        last_transcript = text or '...'
 
         translation_box.markdown(
             f"""
@@ -139,7 +155,7 @@ if st.session_state.running:
             """,
             unsafe_allow_html=True,
         )
-        last_translation = translated
+        last_translation = translated or '...'
 
         progress_bar.progress(min(end_time / audio_len, 1.0))
         status_text.text(f"Segment {idx+1}/{n_segments} — printed at {end_time + gen_time:.1f}s (generation duration {gen_time:.2f}s)")

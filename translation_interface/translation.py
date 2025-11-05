@@ -54,7 +54,7 @@ def transcribe(segment, real_overlap):
 
         cropped = [c for c in chunks if c["timestamp"][0] >= real_overlap]
         cropped_text = " ".join(c["text"].strip() for c in cropped).strip()
-
+        
         return cropped_text
 
 

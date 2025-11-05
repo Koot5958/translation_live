@@ -5,5 +5,4 @@
 /tutorials
 *test*
 /.venv
-*.wav
-*.mp3
+*.pyc
