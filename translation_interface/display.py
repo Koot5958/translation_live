@@ -1,6 +1,6 @@
 
 
-def display_models_output(box, transcript=True, prev_text=None, curr_text=None):
+def _display_models_output(box, transcript=True, prev_text=None, curr_text=None):
     if not curr_text:
         curr_text = f"Waiting for {"transcription" if transcript else "translation"}..."
     if not prev_text:
@@ -15,3 +15,8 @@ def display_models_output(box, transcript=True, prev_text=None, curr_text=None):
         """,
         unsafe_allow_html=True,
     )
+
+
+def update_boxes(transc_box, transl_box, prev_transc, transc, prev_transl, transl):
+    _display_models_output(transc_box, transcript=True, prev_text=prev_transc, curr_text=transc)
+    _display_models_output(transl_box, transcript=False, prev_text=prev_transl, curr_text=transl)

@@ -4,7 +4,7 @@ import streamlit as st
 
 from translation import PreProcessed, transcribe, translate, load_models
 from lang_list import LANGUAGE_CODES
-from display import display_models_output
+from display import update_boxes
 
 
 STEP = 4
@@ -21,6 +21,7 @@ if not uploaded:
 preprocessed = PreProcessed(uploaded)
 audio_len = len(preprocessed.raw_data) / preprocessed.sr
 
+
 #------- languages choice -------#
 col1, col2 = st.columns(2)
 with col1:
@@ -29,6 +30,7 @@ with col2:
     lang_subtitles = st.selectbox("Translation language", list(LANGUAGE_CODES.keys()), index=1)
 LANG_AUDIO = LANGUAGE_CODES[lang_audio]
 LANG_SUBTITLES = LANGUAGE_CODES[lang_subtitles]
+
 
 #------- load models -------#
 if "models_loaded" not in st.session_state:
@@ -44,19 +46,21 @@ with col_load:
             st.session_state.models_loaded = True
         st.success("Models loaded for: " + lang_audio + " to " + lang_subtitles)
 
-#------- interface of transcription/translation -------#
+
+#------- displays initialization -------#
 with col_play:
     play_start = st.button("Play audio")
 
 col_left, col_right = st.columns(2)
-transcript_box = col_left.empty()
-translation_box = col_right.empty()
+transc_box = col_left.empty()
+transl_box = col_right.empty()
 progress_bar = st.progress(0)
 status_text = st.empty()
 
-display_models_output(transcript_box, transcript=True)
-display_models_output(translation_box, transcript=False)
+update_boxes(transc_box, transl_box, None, None, None, None)
 
+
+#------- run audio -------#
 if play_start and not st.session_state.get("running", False):
     st.session_state.running = True
 
@@ -69,9 +73,8 @@ if st.session_state.get("running", False):
 
     playback_start = time.time()
     time_pos = 0.0
-    n_segments = int((audio_len + STEP - 1e-9) // STEP) + (1 if (audio_len % STEP) > 1e-9 else 0)
 
-    last_transcript, last_translation = None, None
+    prev_transc, prev_transl = None, None
 
     while time_pos < audio_len:
         start_time = max(0.0, time_pos + STEP - (STEP + OVERLAP))
@@ -79,24 +82,26 @@ if st.session_state.get("running", False):
 
         segment = preprocessed.norm_data(start_time, end_time)
 
+        # compute transcription and translation
         gen_start = time.time()
-        text = transcribe(segment, max(min(OVERLAP, time_pos), 0.0))
-        translated = translate(text, LANG_SUBTITLES) if text else ""
+        transc = transcribe(segment, max(min(OVERLAP, time_pos), 0.0))
+        transl = translate(transc, LANG_SUBTITLES) if transc else ""
         gen_time = time.time() - gen_start
 
+        # wait before display
         display_at = playback_start + end_time + gen_time
         while time.time() < display_at:
-            time.sleep(0.03)
+            time.sleep(0.05)
 
-        display_models_output(transcript_box, transcript=True, prev_text=last_transcript, curr_text=text)
-        last_transcript = text
-
-        display_models_output(translation_box, transcript=False, prev_text=last_translation, curr_text=translated)
-        last_translation = translated
+        # update displays
+        update_boxes(transc_box, transl_box, prev_transc, transc, prev_transl, transl)
+        prev_transc = transc
+        prev_transl = transl
 
         progress_bar.progress(min(end_time / audio_len, 1.0))
         status_text.text(f"Segment {end_time-STEP}s-{end_time}s — printed at {end_time + gen_time:.1f}s (generation duration {gen_time:.2f}s)")
 
+        # update time
         time_pos += STEP
 
     progress_bar.progress(1.0)
