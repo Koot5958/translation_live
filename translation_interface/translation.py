@@ -30,13 +30,12 @@ def load_models(lang_src):
 
 
 class PreProcessed:
-    def __init__(self, path):
-        self.file = librosa.load(path, sr=16000, mono=True)
-        self.sr = self.file[1]
+    def __init__(self, file):
+        self.file, self.sr = librosa.load(file, sr=16000, mono=True)
 
     @property
     def raw_data(self):
-        return self.file[0].astype(np.float32)
+        return self.file.astype(np.float32)
     
     def norm_data(self, start, end):
         data = self.raw_data[int(start * self.sr) : int(end * self.sr)]
