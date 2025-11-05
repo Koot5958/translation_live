@@ -5,4 +5,4 @@
 /tutorials
 *test*
 /.venv
-*.pyc
+*/__pycache__
