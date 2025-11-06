@@ -1,3 +1,6 @@
+import time
+import os
+
 import numpy as np
 
 import torch
@@ -37,8 +40,8 @@ class PreProcessed:
     def raw_data(self):
         return self.file.astype(np.float32)
     
-    def norm_data(self, start, end):
-        data = self.raw_data[int(start * self.sr) : int(end * self.sr)]
+    def norm_data(self, start, end, all=False):
+        data = self.raw_data if all else self.raw_data[int(start * self.sr) : int(end * self.sr)]
 
         target_rms = 0.1
         rms = np.sqrt(np.mean(data**2))
@@ -71,3 +74,61 @@ def translate(text, lang_target):
             no_repeat_ngram_size=3,
         )
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+    from tqdm import tqdm
+
+
+    load_models('fr')
+    main_color = "#1845a5"
+
+    all_times = [] 
+    for j in range(8):
+        preprocessed = PreProcessed('translation_interface/audios/audio2_mono.wav')
+
+        times = []
+        for i in tqdm(range(50)):
+            start = time.time()
+            segment = preprocessed.norm_data(0, 6)
+            transc = transcribe(segment, 0)
+            times.append(time.time() - start)
+            torch.cuda.empty_cache()
+        all_times.append(times)
+
+    plt.style.use('fivethirtyeight')
+    plt.figure(figsize=(9, 6))
+
+    for times in all_times:
+        plt.plot(
+            range(1, len(times)+1),
+            times,
+            color=main_color,
+            linewidth=1,
+            alpha=0.3,     # forte transparence
+        )
+    
+    mean_times = np.mean(np.array(all_times), axis=0)
+
+    # Tracer la courbe moyenne par-dessus (pleine opacité)
+    plt.plot(
+        range(1, len(mean_times)+1),
+        mean_times,
+        color=main_color,
+        linewidth=2,
+        label="Mean",
+    )
+
+    plt.xlabel('Segment number', fontsize=12)
+    plt.ylabel('Execution time (s)', fontsize=12)
+    plt.title('Recognize() execution times', fontsize=14, fontweight='bold')
+    plt.legend(fontsize=11)
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+
+    os.makedirs('translation_interface/plots', exist_ok=True)
+    plt.savefig('translation_interface/plots/recognize_execution_times.png', dpi=300)
+    plt.close()
+
+
