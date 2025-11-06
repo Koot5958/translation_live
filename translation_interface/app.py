@@ -87,7 +87,7 @@ if st.session_state.get("running", False):
         # compute transcription and translation
         gen_start = time.time()
         transc = transcribe(segment, max(min(OVERLAP, time_pos), 0.0))
-        transl = translate(transc, LANG_SUBTITLES) if transc else ""
+        transl = translate(transc, LANG_SUBTITLES)
         gen_time = time.time() - gen_start
 
         # wait before display
