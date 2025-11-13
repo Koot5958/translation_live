@@ -81,9 +81,21 @@ ctx = webrtc_streamer(
 if ctx and ctx.audio_processor:
     while ctx.state.playing:
         buffer = ctx.audio_processor.pop_buffer()
+
+        #------ Audio level ------#
+        #sq_mean = np.nanmean(buffer**2)
+        #if not np.isnan(sq_mean):
+        #    rms = np.sqrt(sq_mean)
+
+        #    db = 20 * np.log10(rms + 1e-6)
+        #    db = np.clip(db, -60, 0)
+        #    bar_len = int((db + 60) / 60 * 50)
+
+        #    audio_level = "█" * bar_len + " " * (50 - bar_len)
+        #    placeholder.write(f"Audio level: {audio_level}")
         
+        #------ Transcription and translation ------#
         if len(buffer) != 0:
             placeholder.write(f"Audio transcript: {transcribe(buffer, 0)}")
 
-        del buffer
         time.sleep(4)

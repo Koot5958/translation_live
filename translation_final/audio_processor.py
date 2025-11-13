@@ -1,13 +1,10 @@
-import time
 import numpy as np
 
 import threading
 from collections import deque
 
-import streamlit as st
-from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, WebRtcMode
+from streamlit_webrtc import AudioProcessorBase
 from scipy.signal import resample_poly
-from translation_temp import load_models, transcribe, translate, model
 
 
 class AudioProcessor(AudioProcessorBase):
@@ -52,38 +49,33 @@ class AudioProcessor(AudioProcessorBase):
                 removed = self.buffer.popleft()
                 total_samples -= removed.size
 
-    def pop_buffer(self, clear=True):
+    def pop_buffer(self, clear=True, db_threshold=-40):
         with self.lock:
             if not self.buffer:
                 return np.zeros(0, dtype=np.float32)
             arr = np.concatenate(list(self.buffer)).astype(np.float32)
             if clear:
                 self.buffer.clear()
+
+        if level_from_buffer(arr) < db_threshold:
+            return np.zeros(0, dtype=np.float32)
         return arr
 
     def stop(self):
         self.running = False
 
-st.set_page_config(layout="centered")
-st.title("Audio capture in real time")
-placeholder = st.empty()
 
-if model is None:
-    load_models('fr')
+def level_from_buffer(buffer):
+    sq_mean = np.nanmean(buffer**2)
+    if np.isnan(sq_mean):
+        return 0
 
-ctx = webrtc_streamer(
-    key="audio-level",
-    mode=WebRtcMode.SENDONLY,
-    audio_processor_factory=AudioProcessor,
-    media_stream_constraints={"audio": True, "video": False},
-)
+    rms = np.sqrt(sq_mean)
+    db = 20 * np.log10(rms + 1e-6)
 
-if ctx and ctx.audio_processor:
-    while ctx.state.playing:
-        buffer = ctx.audio_processor.pop_buffer()
-        
-        if len(buffer) != 0:
-            placeholder.write(f"Audio transcript: {transcribe(buffer, 0)}")
+    return db
 
-        del buffer
-        time.sleep(4)
+
+def normalize_buffer(buffer, target_mean=0.1):
+    rms = np.sqrt(np.mean(buffer**2))
+    return buffer * (target_mean / (rms + 1e-9))

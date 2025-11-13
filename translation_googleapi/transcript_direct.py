@@ -5,7 +5,7 @@ from google.cloud.speech_v2 import SpeechClient
 from google.api_core.client_options import ClientOptions
 from google.cloud.speech_v2.types import cloud_speech as cloud_speech_types
 
-PROJECT_ID = os.getenv("PROJECT_ID")
+PROJECT_ID = "formal-wonder-477401-g4"
 
 def transcribe_streaming_v2(
     stream_file: str,
