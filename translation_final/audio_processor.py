@@ -68,7 +68,7 @@ class AudioProcessor(AudioProcessorBase):
                 removed = self.buffer.popleft()
                 total_samples -= removed.size
 
-    def pop_buffer(self, clear=True, db_threshold=-40):
+    def pop_buffer(self, clear=True, db_threshold=-35):
         with self.lock:
             if not self.buffer:
                 return np.zeros(0, dtype=np.float32)

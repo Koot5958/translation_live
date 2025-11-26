@@ -80,7 +80,7 @@ if ctx and ctx.audio_processor:
             transc = transcribe(segment, 0, ((1 - OVERLAP_FUTURE) * len(buffer)) / SR)
             last_step = len(buffer)
         else:
-            segment = np.concatenate([buffer, prev_buffer])
+            segment = np.concatenate([prev_buffer, buffer])
             segment = normalize_buffer(segment, target_mean=0.1)
             curr_step = len(segment) // 2
             segment = segment[(1 - OVERLAP_PAST) * curr_step :]

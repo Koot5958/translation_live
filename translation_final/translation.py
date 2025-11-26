@@ -33,6 +33,7 @@ def load_models(lang_src):
 
 
 def transcribe(segment, start, end):
+    
     if len(segment) < SR//10 or end <= start:
         return "..."
 
