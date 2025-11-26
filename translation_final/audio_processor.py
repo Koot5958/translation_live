@@ -1,18 +1,19 @@
 import numpy as np
-
 import threading
 from collections import deque
 
 from streamlit_webrtc import AudioProcessorBase
 from scipy.signal import resample_poly
 
+from utils.parameters import SR
+
 
 class AudioProcessor(AudioProcessorBase):
-    def __init__(self, sr=16000):
+    def __init__(self):
         self.buffer = deque()
         self.lock = threading.Lock()
-        self.sr = sr
-        self.max_samples = self.sr * 2
+        self.sr = SR
+        self.max_samples = self.sr * 4
         self.running = True
 
     def _to_float32(self, data: np.ndarray) -> np.ndarray:
@@ -40,6 +41,24 @@ class AudioProcessor(AudioProcessorBase):
         audio_mono_16k = resample_poly(audio_mono, up=self.sr, down=frames.sample_rate)
         self.fill_buffer(audio_mono_16k)
         return frames
+    
+    """async def recv_queued(self, frames):
+        if not frames:
+            return frames
+        
+        chunks = []
+        for frame in frames:
+            arr = frame.to_ndarray()
+            audio_float = self._to_float32(arr)
+            audio_mono = self._to_mono(audio_float, frame).astype(np.float32)
+            audio_mono_16k = resample_poly(audio_mono, up=self.sr, down=frame.sample_rate)
+            chunks.append(audio_mono_16k)
+
+        if chunks:
+            segment = np.concatenate(chunks)
+            self.fill_buffer(segment)
+
+        return frames"""
 
     def fill_buffer(self, audio):
         with self.lock:
@@ -57,6 +76,7 @@ class AudioProcessor(AudioProcessorBase):
             if clear:
                 self.buffer.clear()
 
+        print(level_from_buffer(arr))
         if level_from_buffer(arr) < db_threshold:
             return np.zeros(0, dtype=np.float32)
         return arr
@@ -65,15 +85,25 @@ class AudioProcessor(AudioProcessorBase):
         self.running = False
 
 
-def level_from_buffer(buffer):
-    sq_mean = np.nanmean(buffer**2)
-    if np.isnan(sq_mean):
-        return 0
+def level_from_buffer(buffer, window_s=2):
+    win_size = window_s * SR
+    if win_size <= 0 or win_size > len(buffer):
+        win_size = len(buffer)
 
-    rms = np.sqrt(sq_mean)
-    db = 20 * np.log10(rms + 1e-6)
+    max_db = -200
+    for i in range(0, len(buffer) - win_size + 1, win_size // 2):
+        win = buffer[i:i + win_size]
+        sq_mean = np.nanmean(win ** 2)
+        if sq_mean <= 0 or np.isnan(sq_mean):
+            continue
 
-    return db
+        rms = np.sqrt(sq_mean)
+        db = 20 * np.log10(rms + 1e-6)
+
+        if db > max_db:
+            max_db = db
+
+    return max_db
 
 
 def normalize_buffer(buffer, target_mean=0.1):

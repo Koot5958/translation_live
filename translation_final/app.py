@@ -1,5 +1,4 @@
 import time
-import gc
 
 import numpy as np
 import streamlit as st
@@ -8,13 +7,10 @@ import torch
 
 from utils.lang_list import LANGUAGE_CODES
 from utils.display import update_boxes
+from utils.parameters import SR, STEP, OVERLAP_FUTURE, OVERLAP_PAST
 from translation import translate, transcribe, load_models
-from audio_processor import AudioProcessor
+from audio_processor import AudioProcessor, normalize_buffer
 
-
-STEP = 3
-OVERLAP_PAST = 1
-OVERLAP_FUTURE = 0.2
 
 st.set_page_config(layout="wide")
 st.title("Transcription and translation")
@@ -47,10 +43,12 @@ with col_load:
 
 #------- select device -------#
 ctx = webrtc_streamer(
-    key="audio-level",
+    key="audio",
     mode=WebRtcMode.SENDONLY,
     audio_processor_factory=AudioProcessor,
     media_stream_constraints={"audio": True, "video": False},
+    async_processing=True,
+    audio_receiver_size=256,
 )
 
 #------- displays initialization -------#
@@ -64,26 +62,32 @@ update_boxes(transc_box, transl_box, None, None, None, None)
 if ctx and ctx.audio_processor:
     start = time.time()
     prev_transc, prev_transl, prev_buffer = None, None, None
+    prev_step = start
 
     while ctx.state.playing:
-        buffer = ctx.audio_processor.pop_buffer()
+        if time.time() - prev_step < STEP:
+            time.sleep(0.1)
+            continue
+        prev_step = time.time()
 
+        buffer = ctx.audio_processor.pop_buffer()
         if len(buffer) == 0:
+            time.sleep(0.1)
             continue
 
         if prev_buffer is None or len(prev_buffer) == 0:
-            segment = buffer
-            transc = transcribe(segment, 0, (1 - OVERLAP_FUTURE) * len(buffer))
+            segment = normalize_buffer(buffer, target_mean=0.1)
+            transc = transcribe(segment, 0, ((1 - OVERLAP_FUTURE) * len(buffer)) / SR)
             last_step = len(buffer)
         else:
             segment = np.concatenate([buffer, prev_buffer])
+            segment = normalize_buffer(segment, target_mean=0.1)
             curr_step = len(segment) // 2
             segment = segment[(1 - OVERLAP_PAST) * curr_step :]
 
             start_subt = max(0, OVERLAP_PAST * curr_step - OVERLAP_FUTURE * last_step)
             end_subt = (2 - OVERLAP_FUTURE) * curr_step
-            print("start/end subt ", start_subt, end_subt, len(segment))
-            transc = transcribe(segment, start_subt, end_subt)
+            transc = transcribe(segment, start_subt / SR, end_subt / SR)
             last_step = curr_step
 
         transl = translate(transc, LANG_SUBTITLES)
@@ -94,9 +98,6 @@ if ctx and ctx.audio_processor:
         prev_transl = transl
         prev_buffer = buffer
 
-        del buffer, transc, segment
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        
-        time.sleep(STEP)
 

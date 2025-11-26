@@ -86,7 +86,7 @@ if __name__ == '__main__':
 
     all_times = [] 
     for j in range(8):
-        preprocessed = PreProcessed('translation_interface/audios/audio2_mono.wav')
+        preprocessed = PreProcessed('/home/caditlab/Documents/espace/snu_fixed/translation_interface/audios/audio2_mono.wav')
 
         times = []
         for i in tqdm(range(50)):
@@ -127,8 +127,8 @@ if __name__ == '__main__':
     plt.grid(alpha=0.3)
     plt.tight_layout()
 
-    os.makedirs('translation_interface/plots', exist_ok=True)
-    plt.savefig('translation_interface/plots/recognize_execution_times.png', dpi=300)
+    os.makedirs('/home/caditlab/Documents/espace/snu_fixed/translation_interface/plots', exist_ok=True)
+    plt.savefig('/home/caditlab/Documents/espace/snu_fixed/translation_interface/plots/recognize_execution_times.png', dpi=300)
     plt.close()
 
 

@@ -1,7 +1,7 @@
-import numpy as np
-
 import torch
 from transformers import pipeline, M2M100Tokenizer, M2M100ForConditionalGeneration
+
+from utils.parameters import SR
 
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -33,7 +33,7 @@ def load_models(lang_src):
 
 
 def transcribe(segment, start, end):
-    if len(segment) < 320 or end <= start:
+    if len(segment) < SR//10 or end <= start:
         return "..."
 
     with torch.no_grad():
@@ -41,7 +41,7 @@ def transcribe(segment, start, end):
 
         chunks = result["chunks"]
 
-        cropped = [c for c in chunks if c["timestamp"][0] >= start and end >= c["timestamp"][1]]
+        cropped = [c for c in chunks if c["timestamp"][1] >= start and end >= c["timestamp"][0]]
         cropped_text = " ".join(c["text"].strip() for c in cropped).strip()
         
         del result
