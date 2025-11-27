@@ -9,8 +9,8 @@ import torch
 from utils.lang_list import LANGUAGE_CODES
 from utils.display import update_boxes
 from utils.parameters import SR, STEP, OVERLAP_FUTURE, OVERLAP_PAST
-from utils.logs import log_memory, TIME
-from utils.save_graph_durations import save_durations_plot
+from utils.logs.logs import log_memory, TIME
+from utils.logs.save_graph_durations import save_durations_plot
 from translation import translate, transcribe, load_models
 from audio_processor import AudioProcessor, normalize_buffer
 
