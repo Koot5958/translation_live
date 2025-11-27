@@ -1,4 +1,5 @@
 import time
+import os
 
 import numpy as np
 import streamlit as st
@@ -8,13 +9,16 @@ import torch
 from utils.lang_list import LANGUAGE_CODES
 from utils.display import update_boxes
 from utils.parameters import SR, STEP, OVERLAP_FUTURE, OVERLAP_PAST
-from utils.logs import log_memory
+from utils.logs import log_memory, TIME
+from utils.save_graph_durations import save_durations_plot
 from translation import translate, transcribe, load_models
 from audio_processor import AudioProcessor, normalize_buffer
 
 
 st.set_page_config(layout="wide")
 st.title("Transcription and translation")
+
+os.environ["PYTORCH_ALLOC_CONF"] = "max_split_size_mb:20,garbage_collection_threshold:0.6,reserve_alignment:128"
 
 
 #------- languages choice -------#
@@ -65,6 +69,9 @@ if ctx and ctx.audio_processor:
     prev_transc, prev_transl, prev_buffer = None, None, None
     prev_step = start
 
+    durations_transc = []
+    durations_transl = []
+
     while ctx.state.playing:
         if time.time() - prev_step < STEP:
             time.sleep(0.1)
@@ -77,6 +84,8 @@ if ctx and ctx.audio_processor:
             continue
 
         log_memory()
+
+        duration_transc = time.time()
 
         if prev_buffer is None or len(prev_buffer) == 0:
             segment = normalize_buffer(buffer, target_mean=0.1)
@@ -92,8 +101,14 @@ if ctx and ctx.audio_processor:
             end_subt = (2 - OVERLAP_FUTURE) * curr_step
             transc = transcribe(segment, start_subt / SR, end_subt / SR)
             last_step = curr_step
-
+        
+        duration_transc = time.time() - duration_transc
+        durations_transc.append(duration_transc)
+        
+        duration_transl = time.time()
         transl = translate(transc, LANG_SUBTITLES)
+        duration_transl = time.time() - duration_transl
+        durations_transl.append(duration_transl)
 
         update_boxes(transc_box, transl_box, prev_transc, transc, prev_transl, transl)
 
@@ -107,4 +122,6 @@ if ctx and ctx.audio_processor:
             torch.cuda.empty_cache()
         
         log_memory()
+    
+    save_durations_plot(durations_transc, durations_transl, f"durations_log_{TIME}")
 

@@ -5,7 +5,8 @@ import time
 import os
 
 
-LOG_FILENAME = f"translation_final/logs/memory_log_{time.strftime('%Y%m%d_%H%M%S')}.json"
+TIME = time.strftime('%Y%m%d_%H%M%S')
+LOG_FILENAME = f"translation_whisper/logs/memory_log_{TIME}.json"
 
 if not os.path.exists(LOG_FILENAME):
     with open(LOG_FILENAME, "w") as f:
@@ -13,23 +14,28 @@ if not os.path.exists(LOG_FILENAME):
 
 
 def log_memory():
-    # Mesures CPU/GPU
+    # CPU RAM
     mem = psutil.Process().memory_info().rss / (1024 ** 2)
 
-    if torch.cuda.is_available():
-        gpu_mem = torch.cuda.memory_allocated() / (1024 ** 2)
-        gpu_cached = torch.cuda.memory_reserved() / (1024 ** 2)
-    else:
-        gpu_mem = None
-        gpu_cached = None
-
-    # Objet JSON pour le log
     log_entry = {
         "timestamp": time.time(),
         "cpu_ram_mb": round(mem, 2),
-        "gpu_mem_mb": round(gpu_mem, 2) if gpu_mem is not None else None,
-        "gpu_cached_mb": round(gpu_cached, 2) if gpu_cached is not None else None,
     }
+
+    if torch.cuda.is_available():
+        total = torch.cuda.get_device_properties(0).total_memory / (1024**2)
+        allocated = torch.cuda.memory_allocated() / (1024**2)
+        reserved = torch.cuda.memory_reserved() / (1024**2)
+        free = total - allocated
+        fragmentation = reserved - allocated
+
+        log_entry.update({
+            "gpu_total_mb": round(total, 2),
+            "gpu_allocated_mb": round(allocated, 2),
+            "gpu_reserved_mb": round(reserved, 2),
+            "gpu_free_mb": round(free, 2),
+            "gpu_fragmentation_mb": round(fragmentation, 2)
+        })
 
     # Append to JSON file
     with open(LOG_FILENAME, "r+") as f:
