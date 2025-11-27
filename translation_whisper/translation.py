@@ -52,7 +52,7 @@ def transcribe(segment, start, end):
             f"  Cropped: {cropped_text}\n"
             "-------------------------------------\n"
         )
-        
+
         del result
         del chunks
         del cropped
