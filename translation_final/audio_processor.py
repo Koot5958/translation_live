@@ -76,8 +76,14 @@ class AudioProcessor(AudioProcessorBase):
             if clear:
                 self.buffer.clear()
 
-        print(level_from_buffer(arr))
-        if level_from_buffer(arr) < db_threshold:
+        # -- logs -- #
+        level = level_from_buffer(arr)
+        print(
+            "\n--- AUDIO LEVEL LOG -----------------\n"
+            f"  Audio max mean level: {level} dB\n"
+            "-------------------------------------\n"
+        )
+        if level < db_threshold:
             return np.zeros(0, dtype=np.float32)
         return arr
 

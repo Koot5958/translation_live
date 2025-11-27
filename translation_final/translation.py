@@ -33,7 +33,7 @@ def load_models(lang_src):
 
 
 def transcribe(segment, start, end):
-    
+
     if len(segment) < SR//10 or end <= start:
         return "..."
 
@@ -42,8 +42,16 @@ def transcribe(segment, start, end):
 
         chunks = result["chunks"]
 
-        cropped = [c for c in chunks if c["timestamp"][1] >= start and end >= c["timestamp"][0]]
+        cropped = [c for c in chunks if c["timestamp"][0] >= start and end >= c["timestamp"][0]]
         cropped_text = " ".join(c["text"].strip() for c in cropped).strip()
+
+        # -- logs -- #
+        print(
+            "\n--- OCR LOG -------------------------\n"
+            f"  Result: {result['text']}\n"
+            f"  Cropped: {cropped_text}\n"
+            "-------------------------------------\n"
+        )
         
         del result
         del chunks

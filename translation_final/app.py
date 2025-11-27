@@ -8,6 +8,7 @@ import torch
 from utils.lang_list import LANGUAGE_CODES
 from utils.display import update_boxes
 from utils.parameters import SR, STEP, OVERLAP_FUTURE, OVERLAP_PAST
+from utils.logs import log_memory
 from translation import translate, transcribe, load_models
 from audio_processor import AudioProcessor, normalize_buffer
 
@@ -75,6 +76,8 @@ if ctx and ctx.audio_processor:
             time.sleep(0.1)
             continue
 
+        log_memory()
+
         if prev_buffer is None or len(prev_buffer) == 0:
             segment = normalize_buffer(buffer, target_mean=0.1)
             transc = transcribe(segment, 0, ((1 - OVERLAP_FUTURE) * len(buffer)) / SR)
@@ -98,6 +101,10 @@ if ctx and ctx.audio_processor:
         prev_transl = transl
         prev_buffer = buffer
 
+        log_memory()
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        
+        log_memory()
 
