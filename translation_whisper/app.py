@@ -101,10 +101,10 @@ if ctx and ctx.audio_processor:
             end_subt = (2 - OVERLAP_FUTURE) * curr_step
             transc = transcribe(segment, start_subt / SR, end_subt / SR)
             last_step = curr_step
-        
+
         duration_transc = time.time() - duration_transc
         durations_transc.append(duration_transc)
-        
+
         duration_transl = time.time()
         transl = translate(transc, LANG_SUBTITLES)
         duration_transl = time.time() - duration_transl
@@ -120,8 +120,8 @@ if ctx and ctx.audio_processor:
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        
+
         log_memory()
-    
+
     save_durations_plot(durations_transc, durations_transl, f"durations_log_{TIME}")
 
