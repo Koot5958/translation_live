@@ -67,6 +67,7 @@ update_boxes(transc_box, transl_box, None, None, None, None)
 if ctx and ctx.audio_processor:
     start = time.time()
     prev_transc, prev_transl, prev_buffer = None, None, None
+    generated_last = False
     prev_step = start
 
     durations_transc = []
@@ -81,10 +82,21 @@ if ctx and ctx.audio_processor:
         buffer = ctx.audio_processor.pop_buffer()
         if len(buffer) == 0:
             time.sleep(0.1)
+            if generated_last:
+                segment = normalize_buffer(buffer, target_mean=0.1)
+                curr_step = len(segment) // 2
+
+                start_subt = max(0, (1 - OVERLAP_FUTURE) * len(segment))
+                transc = transcribe(segment, start_subt / SR, len(segment) / SR)
+                transl = translate(transc, LANG_SUBTITLES)
+                update_boxes(transc_box, transl_box, prev_transc, transc, prev_transl, transl)
+
+            generated_last = False
+            prev_buffer = None
             continue
 
         log_memory()
-
+        generated_last = True
         duration_transc = time.time()
 
         if prev_buffer is None or len(prev_buffer) == 0:
@@ -103,11 +115,12 @@ if ctx and ctx.audio_processor:
             last_step = curr_step
 
         duration_transc = time.time() - duration_transc
-        durations_transc.append(duration_transc)
 
         duration_transl = time.time()
         transl = translate(transc, LANG_SUBTITLES)
         duration_transl = time.time() - duration_transl
+
+        durations_transc.append(duration_transc)
         durations_transl.append(duration_transl)
 
         update_boxes(transc_box, transl_box, prev_transc, transc, prev_transl, transl)
@@ -117,10 +130,8 @@ if ctx and ctx.audio_processor:
         prev_buffer = buffer
 
         log_memory()
-
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-
         log_memory()
 
     save_durations_plot(durations_transc, durations_transl, f"durations_log_{TIME}")
