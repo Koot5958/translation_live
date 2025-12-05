@@ -16,9 +16,9 @@ st.title("Transcription and translation")
 col1, col2 = st.columns(2)
 lang_keys = list(LANGUAGE_CODES.keys())
 with col1:
-    lang_audio = st.selectbox("Audio language", list(LANGUAGE_CODES.keys()), index=lang_keys.index("French (France)"))
+    lang_audio = st.selectbox("Audio language", list(LANGUAGE_CODES.keys()), index=lang_keys.index("English (United States)"))
 with col2:
-    lang_subtitles = st.selectbox("Translation language", list(LANGUAGE_CODES.keys()), index=lang_keys.index("English (United States)"))
+    lang_subtitles = st.selectbox("Translation language", list(LANGUAGE_CODES.keys()), index=lang_keys.index("French (France)"))
 LANG_AUDIO = LANGUAGE_CODES[lang_audio]
 LANG_SUBTITLES = LANGUAGE_CODES[lang_subtitles]
 
@@ -44,9 +44,8 @@ streaming_config = speech.StreamingRecognitionConfig(
     interim_results=True,
 )
 
-#------- running process -------#
+#------- parallel thread for STT -------#
 def stt_thread_target():
-    """Thread où Google STT tourne en arrière-plan."""
     global transcript
     with MicrophoneStream(RATE, CHUNK) as stream:
         audio_generator = stream.generator()
@@ -54,7 +53,6 @@ def stt_thread_target():
             speech.StreamingRecognizeRequest(audio_content=content)
             for content in audio_generator
         )
-
         responses = client.streaming_recognize(streaming_config, requests)
         for response in responses:
             if not response.results:
@@ -66,13 +64,11 @@ def stt_thread_target():
 
             transcript = result.alternatives[0].transcript
 
-
-#----- thread STT -----#
 stt_thread = threading.Thread(target=stt_thread_target, daemon=True)
 stt_thread.start()
 
 
-#----- streamlit updates -----#
+#----- streamlit display updates -----#
 first_new_line = True
 while True:
     transc_split = transcript.split()
