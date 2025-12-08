@@ -1,22 +1,44 @@
-
-
-def _display_models_output(box, transcript=True, prev_text=None, curr_text=None):
-    if not curr_text:
-        curr_text = f"Waiting for {"transcription" if transcript else "translation"}..."
-    if not prev_text:
-        prev_text = '...'
-    box.markdown(
-        f"""
-            <div style="font-size:1.1em;">
-                <h2>{"Transcript" if transcript else "Translation"}</h2>
-            </div>
-            <p style="color:gray; opacity:0.6; margin-bottom:0.2em;">{prev_text}</p>
-            <p style="background-color:#1E90FF22; padding:4px 8px; border-radius:6px;">{curr_text}</p>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def update_boxes(transc_box, transl_box, prev_transc, transc, prev_transl, transl):
-    _display_models_output(transc_box, transcript=True, prev_text=prev_transc, curr_text=transc)
-    _display_models_output(transl_box, transcript=False, prev_text=prev_transl, curr_text=transl)
+def get_html_subt(prev_subt, subt, line_scroll):
+    if line_scroll:
+        html = f"""
+            <style>
+                @keyframes shrinkSpace {{
+                    0%   {{ height: calc(17px * 1.4); opacity: 1; }}
+                    100% {{ height: 0; opacity: 0; }}
+                }}
+                .trans-box {{
+                    max-width: 90%;
+                    margin: auto;
+                    padding: 10px;
+                    color: black;
+                    font-size: 17px;
+                    line-height: 1.4;
+                    text-align: center;
+                }}
+                .space-line {{
+                    height: calc(17px * 1.4);
+                    animation: shrinkSpace 0.3s ease-out forwards;
+                }}
+            </style>
+        """
+    else:
+        html = f"""
+            <style>
+                .trans-box {{
+                    max-width: 90%;
+                    margin: auto;
+                    padding: 10px;
+                    color: black;
+                    font-size: 17px;
+                    line-height: 1.4;
+                    text-align: center;
+                }}
+            </style>
+        """
+    return html + f"""
+        <div class="trans-box">
+            <div class="space-line"></div>
+            <div style="display:block;"><span style="display:inline-block; background:rgba(0,0,0,0.1); padding:4px 10px; border-radius:8px;">{" ".join(prev_subt)}</span></div>
+            <div style="display:block;"><span style="display:inline-block; background:rgba(0,0,0,0.1); padding:4px 10px; border-radius:8px;">{" ".join(subt)}</span></div>
+        </div>
+    """
