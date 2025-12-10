@@ -56,14 +56,16 @@ with col_transl:
 
 
 #------- parallel threads for STT and translation -------#
+print_logs_threads("Threads before stop_all_threads (before running while)")
 stop_all_threads()
+print_logs_threads("Threads after stop_all_threads (before running while)")
 
 st.session_state.threads = ThreadManager(LANG_AUDIO, LANG_TRANSL)
 st.session_state.threads.start()
 
 threads = st.session_state.threads
 
-print_logs_threads("Threads before running while")
+print_logs_threads("Threads after creating threads (before running while)")
 
 
 #----- streamlit display updates -----#
