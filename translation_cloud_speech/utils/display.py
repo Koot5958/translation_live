@@ -1,4 +1,27 @@
-def get_html_subt(prev_subt, subt, line_scroll):
+from .parameters import MAX_LEN, REFRESH_RATE_SLOW
+
+
+def format_subt(text, prev_subt):
+    text_split = text.split()
+    new_line = False
+
+    if len(text_split) <= MAX_LEN:
+        subt = text_split
+        prev_subt = []
+    else:
+        subt = text_split[(len(text_split) // MAX_LEN) * MAX_LEN :]
+        start_subt = len(text_split) - len(subt)
+
+        new_prev_subt = text_split[: start_subt]
+        new_prev_subt = new_prev_subt[-MAX_LEN :]
+        if prev_subt != new_prev_subt:
+            prev_subt = new_prev_subt
+            new_line = True
+
+    return new_line, prev_subt, subt
+
+
+def get_html_subt(prev_subt, subt, line_scroll, subt_type):
     if line_scroll:
         html = f"""
             <style>
@@ -6,7 +29,7 @@ def get_html_subt(prev_subt, subt, line_scroll):
                     0%   {{ height: calc(17px * 1.4); opacity: 1; }}
                     100% {{ height: 0; opacity: 0; }}
                 }}
-                .trans-box {{
+                .trans-box-{subt_type} {{
                     max-width: 90%;
                     margin: auto;
                     padding: 10px;
@@ -15,16 +38,16 @@ def get_html_subt(prev_subt, subt, line_scroll):
                     line-height: 1.4;
                     text-align: center;
                 }}
-                .space-line {{
+                .space-line-{subt_type} {{
                     height: calc(17px * 1.4);
-                    animation: shrinkSpace 0.3s ease-out forwards;
+                    animation: shrinkSpace {REFRESH_RATE_SLOW}s ease-out forwards;
                 }}
             </style>
         """
     else:
         html = f"""
             <style>
-                .trans-box {{
+                .trans-box-{subt_type} {{
                     max-width: 90%;
                     margin: auto;
                     padding: 10px;
@@ -36,9 +59,9 @@ def get_html_subt(prev_subt, subt, line_scroll):
             </style>
         """
     return html + f"""
-        <div class="trans-box">
-            <div class="space-line"></div>
-            <div style="display:block;"><span style="display:inline-block; background:rgba(0,0,0,0.1); padding:4px 10px; border-radius:8px;">{" ".join(prev_subt)}</span></div>
-            <div style="display:block;"><span style="display:inline-block; background:rgba(0,0,0,0.1); padding:4px 10px; border-radius:8px;">{" ".join(subt)}</span></div>
+        <div class="trans-box-{subt_type}">
+            <div class="space-line-{subt_type}"></div>
+            <div style="display:block; text-align: left;"><span style="display:inline-block; background:rgba(0,0,0,0.1); padding:4px 10px; border-radius:8px;">{" ".join(prev_subt)}</span></div>
+            <div style="display:block; text-align: left;"><span style="display:inline-block; background:rgba(0,0,0,0.1); padding:4px 10px; border-radius:8px;">{" ".join(subt)}</span></div>
         </div>
     """

@@ -104,3 +104,11 @@ class MicrophoneStream:
                     break
 
             yield b"".join(data)
+    
+    def close(self):
+        if not self.closed:
+            self._audio_stream.stop_stream()
+            self._audio_stream.close()
+            self.closed = True
+            self._buff.put(None)
+            self._audio_interface.terminate()
