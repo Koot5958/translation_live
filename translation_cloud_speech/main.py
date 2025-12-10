@@ -2,7 +2,7 @@ import time
 
 import streamlit as st
 
-from utils.parameters import DEFAULT_AUDIO_LANG, DEFAULT_TRANS_LANG, REFRESH_RATE_FAST, REFRESH_RATE_SLOW, LOG_TITLE
+from utils.parameters import DEFAULT_AUDIO_LANG, DEFAULT_TRANS_LANG, REFRESH_RATE_FAST, REFRESH_RATE_SLOW
 from utils.lang_list import LANGUAGE_CODES
 from utils.display import get_html_subt, format_subt
 from utils.streamlit_utils import shutdown_app
