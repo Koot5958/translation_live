@@ -93,6 +93,8 @@ class MicrophoneStream:
                 return
             data = [chunk]
 
+            print(len(chunk))
+
             # Now consume whatever other data's still buffered.
             while True:
                 try:
@@ -103,6 +105,7 @@ class MicrophoneStream:
                 except queue.Empty:
                     break
 
+            print(len(data))
             yield b"".join(data)
     
     def close(self):

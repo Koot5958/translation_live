@@ -13,3 +13,7 @@ THREAD_NAMES = ["speech_to_text", "translate"]
 
 # Display
 LOG_TITLE = "[Logs]"
+
+# Audio stream
+SR = 16000
+CHUNK = int(SR / 10)

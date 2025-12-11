@@ -1,94 +1,85 @@
+import numpy as np
 import queue
 
-import pyaudio
+from streamlit_webrtc import AudioProcessorBase
+from scipy.signal import resample_poly
+
+from utils.parameters import SR, CHUNK
 
 
-RATE = 16000
-CHUNK = int(RATE / 10)
-
-
-class MicrophoneStream:
-    """Opens a recording stream as a generator yielding the audio chunks."""
-
-    def __init__(self: object, rate: int = RATE, chunk: int = CHUNK) -> None:
-        """The audio -- and generator -- is guaranteed to be on the main thread."""
+class AudioProcessor(AudioProcessorBase):
+    def __init__(self, rate=SR, chunk=CHUNK):
         self._rate = rate
         self._chunk = chunk
 
-        # Create a thread-safe buffer of audio data
-        self._buff = queue.Queue()
-        self.closed = True
+        self.buffer = queue.Queue()
+        self._temp_buffer = []
+        self.running = True
 
-    def __enter__(self: object) -> object:
-        self._audio_interface = pyaudio.PyAudio()
-        self._audio_stream = self._audio_interface.open(
-            format=pyaudio.paInt16,
-            # The API currently only supports 1-channel (mono) audio
-            # https://goo.gl/z757pE
-            channels=1,
-            rate=self._rate,
-            input=True,
-            frames_per_buffer=self._chunk,
-            # Run the audio stream asynchronously to fill the buffer object.
-            # This is necessary so that the input device's buffer doesn't
-            # overflow while the calling thread makes network requests, etc.
-            stream_callback=self._fill_buffer,
-        )
+    def _to_float32(self, data: np.ndarray) -> np.ndarray:
+        if np.issubdtype(data.dtype, np.integer):
+            if data.dtype == np.int16:
+                return data.astype(np.float32) / 32768.0
+            if data.dtype == np.int32:
+                return data.astype(np.float32) / 2147483648.0
+        return data.astype(np.float32)
 
-        self.closed = False
+    def _to_mono(self, data, frames) -> np.ndarray:
+        if frames.layout.name == 'mono':
+            return data
+        if data.ndim == 2:
+            axis = 0 if data.shape[0] <= 8 else 1
+            return np.mean(data, axis=axis, dtype=np.float32)
+        if data.ndim == 1:
+            return data.reshape(-1, 2).mean(axis=1)
+        return data
 
-        return self
+    def recv(self, frames):
+        audio = frames.to_ndarray()
+        audio_float = self._to_float32(audio[0])
+        audio_mono = self._to_mono(audio_float, frames).astype(np.float32)
+        audio_mono_16k = resample_poly(audio_mono, up=self._rate, down=frames.sample_rate)
+        self.fill_buffer(audio_mono_16k)
+        return frames
+    
+    """async def recv_queued(self, frames):
+        if not frames:
+            return frames
+        
+        chunks = []
+        for frame in frames:
+            arr = frame.to_ndarray()
+            audio_float = self._to_float32(arr)
+            audio_mono = self._to_mono(audio_float, frame).astype(np.float32)
+            audio_mono_16k = resample_poly(audio_mono, up=self.sr, down=frame.sample_rate)
+            chunks.append(audio_mono_16k)
 
-    def __exit__(
-        self: object,
-        type: object,
-        value: object,
-        traceback: object,
-    ) -> None:
-        """Closes the stream, regardless of whether the connection was lost or not."""
-        self._audio_stream.stop_stream()
-        self._audio_stream.close()
-        self.closed = True
-        # Signal the generator to terminate so that the client's
-        # streaming_recognize method will not block the process termination.
-        self._buff.put(None)
-        self._audio_interface.terminate()
+        if chunks:
+            segment = np.concatenate(chunks)
+            self.fill_buffer(segment)
 
-    def _fill_buffer(
-        self: object,
-        in_data: object,
-        frame_count: int,
-        time_info: object,
-        status_flags: object,
-    ) -> object:
-        """Continuously collect data from the audio stream, into the buffer.
+        return frames"""
 
-        Args:
-            in_data: The audio data as a bytes object
-            frame_count: The number of frames captured
-            time_info: The time information
-            status_flags: The status flags
 
-        Returns:
-            The audio data as a bytes object
-        """
-        self._buff.put(in_data)
-        return None, pyaudio.paContinue
+    def fill_buffer(self, audio):
+        audio_int16 = (audio * 32767).astype(np.int16)
+        self._temp_buffer.extend(audio_int16) 
 
-    def generator(self: object) -> object:
-        """Generates audio chunks from the stream of audio data in chunks.
+        if len(self._temp_buffer) >= 1600:
+            # conversion en octets car c'est attendu par l'API
+            segment_np = np.array(self._temp_buffer, dtype=np.int16)
+            audio_bytes = segment_np.tobytes()
 
-        Args:
-            self: The MicrophoneStream object
+            self.buffer.put(audio_bytes)
+            self._temp_buffer = []
 
-        Returns:
-            A generator that outputs audio chunks.
-        """
-        while not self.closed:
+
+    def generator(self):
+        while self.running:
             # Use a blocking get() to ensure there's at least one chunk of
             # data, and stop iteration if the chunk is None, indicating the
             # end of the audio stream.
-            chunk = self._buff.get()
+            chunk = self.buffer.get()
             if chunk is None:
                 return
             data = [chunk]
@@ -96,7 +87,7 @@ class MicrophoneStream:
             # Now consume whatever other data's still buffered.
             while True:
                 try:
-                    chunk = self._buff.get(block=False)
+                    chunk = self.buffer.get(block=False)
                     if chunk is None:
                         return
                     data.append(chunk)
@@ -104,11 +95,8 @@ class MicrophoneStream:
                     break
 
             yield b"".join(data)
-    
-    def close(self):
-        if not self.closed:
-            self._audio_stream.stop_stream()
-            self._audio_stream.close()
-            self.closed = True
-            self._buff.put(None)
-            self._audio_interface.terminate()
+
+    def stop(self):
+        if self.running:
+            self.running = False
+            self.buffer.put(None)

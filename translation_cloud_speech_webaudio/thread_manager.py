@@ -5,8 +5,7 @@ import streamlit as st
 from google.cloud import speech
 from google.cloud import translate_v3
 
-from microphone_stream import CHUNK, RATE, MicrophoneStream
-from utils.parameters import THREAD_NAMES, REFRESH_TRANSLATE_RATE
+from utils.parameters import THREAD_NAMES, REFRESH_TRANSLATE_RATE, SR
 from utils.logs import print_logs
 
 
@@ -15,11 +14,11 @@ TIME_BETWEEN_SENTENCES = 4
 
 
 class ThreadManager:
-    def __init__(self, lang_audio, lang_transl):
+    def __init__(self, lang_audio, lang_transl, audio_processor):
         self.transc_client = speech.SpeechClient()
         self.transl_client = translate_v3.TranslationServiceClient()
 
-        self.thread_stt = threading.Thread(target=self.speech_to_text, name=THREAD_NAMES[0])
+        self.thread_stt = threading.Thread(target=self.speech_to_text, args=(audio_processor,), name=THREAD_NAMES[0])
         self.thread_transl = threading.Thread(target=self.translate, name=THREAD_NAMES[1])
         self.output_stt, self.output_transl = "", ""
         self.prev_output_stt = []
@@ -40,7 +39,7 @@ class ThreadManager:
     def streaming_config(self):
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=RATE,
+            sample_rate_hertz=SR,
             language_code=self.lang_audio,
             enable_word_time_offsets=True,
             profanity_filter=True,
@@ -51,55 +50,53 @@ class ThreadManager:
             interim_results=True,
         )
 
-    def speech_to_text(self):
-        self.stream = MicrophoneStream(RATE, CHUNK)
-        with self.stream as stream:
-            audio_generator = stream.generator()
-            requests = (
-                speech.StreamingRecognizeRequest(audio_content=content)
-                for content in audio_generator
-            )
-            responses = self.transc_client.streaming_recognize(self.streaming_config, requests)
-            for response in responses:
-                if not self.running:
-                    break
+    def speech_to_text(self, audio_processor):
+        audio_generator = audio_processor.generator()
+        requests = (
+            speech.StreamingRecognizeRequest(audio_content=content)
+            for content in audio_generator
+        )
+        responses = self.transc_client.streaming_recognize(self.streaming_config, requests)
+        for response in responses:
+            if not self.running:
+                break
 
-                if not response.results:
-                    continue
+            if not response.results:
+                continue
 
-                result = response.results[0]
-                if not result.alternatives:
-                    continue
+            result = response.results[0]
+            if not result.alternatives:
+                continue
 
-                if time.time() - self.last_transc_time > TIME_BETWEEN_SENTENCES:
-                    self.add_to_stt_output = ""
-                self.last_transc_time = time.time()
+            if time.time() - self.last_transc_time > TIME_BETWEEN_SENTENCES:
+                self.add_to_stt_output = ""
+            self.last_transc_time = time.time()
 
-                output = result.alternatives[0].transcript
+            output = result.alternatives[0].transcript
 
-                # more stability in the output to avoid changes far away in the transcription
-                output_split = output.split(" ")
-                if len(self.prev_output_stt) > len(output_split):
-                    output_split = self.prev_output_stt
-                elif len(self.prev_output_stt) > 3:
-                    output_split = self.prev_output_stt[:-3] + output_split[len(self.prev_output_stt)-3:]
-                output = " ".join(output_split)
-                self.prev_output_stt = output_split
+            # more stability in the output to avoid changes far away in the transcription
+            output_split = output.split(" ")
+            if len(self.prev_output_stt) > len(output_split):
+                output_split = self.prev_output_stt
+            elif len(self.prev_output_stt) > 3:
+                output_split = self.prev_output_stt[:-3] + output_split[len(self.prev_output_stt)-3:]
+            output = " ".join(output_split)
+            self.prev_output_stt = output_split
 
-                if result.is_final:
-                    # potentially add the previous transcript outputs (usefull when final transcripts are computed too fast)
-                    self.prev_transcs.append([output, time.time()])
-                    for transc in self.prev_transcs:
-                        if time.time() - transc[1] > TIME_BETWEEN_SENTENCES:
-                            self.prev_transcs.remove(transc)
-                    self.add_to_stt_output = " ".join([transc for transc, _ in self.prev_transcs])
+            if result.is_final:
+                # potentially add the previous transcript outputs (usefull when final transcripts are computed too fast)
+                self.prev_transcs.append([output, time.time()])
+                for transc in self.prev_transcs:
+                    if time.time() - transc[1] > TIME_BETWEEN_SENTENCES:
+                        self.prev_transcs.remove(transc)
+                self.add_to_stt_output = " ".join([transc for transc, _ in self.prev_transcs])
 
-                    # clear previous inter output
-                    self.prev_output_stt = []
-                else:
-                    self.prev_transc = [result.alternatives[0].transcript, time.time()]
+                # clear previous inter output
+                self.prev_output_stt = []
+            else:
+                self.prev_transc = [result.alternatives[0].transcript, time.time()]
 
-                self.output_stt = self.add_to_stt_output + output
+            self.output_stt = self.add_to_stt_output + output
 
     def translate(self):
         while self.running:
