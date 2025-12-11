@@ -5,12 +5,12 @@ import streamlit as st
 from google.cloud import speech
 from google.cloud import translate_v3
 
-from utils.parameters import THREAD_NAMES, REFRESH_TRANSLATE_RATE, SR
+from utils.parameters import THREAD_NAMES, REFRESH_TRANSLATE_RATE, SR, STABILITY_MARGIN, TIME_BETWEEN_SENTENCES
 from utils.logs import print_logs
+from utils.display import split_text, join_text
 
 
 PROJECT_ID = "formal-wonder-477401-g4"
-TIME_BETWEEN_SENTENCES = 4
 
 
 class ThreadManager:
@@ -20,20 +20,18 @@ class ThreadManager:
 
         self.thread_stt = threading.Thread(target=self.speech_to_text, args=(audio_processor,), name=THREAD_NAMES[0])
         self.thread_transl = threading.Thread(target=self.translate, name=THREAD_NAMES[1])
-        self.output_stt, self.output_transl = "", ""
-        self.prev_output_stt = []
-        self.prev_input_transl = ""
 
-        self.prev_transc = [[None, None]]
-        self.prev_transcs = []
+        self.output_stt, self.output_transl = [], []
+        self.prev_output_stt, self.prev_output_transl = [], []
+        self.prev_input_transl = []
 
-        self.lang_audio = lang_audio
-        self.lang_transl = lang_transl
+        self.latest_final_transcs = []
+        self.prefix_stt_output = []
 
-        self.running = True
+        self.lang_audio, self.lang_transl = lang_audio, lang_transl
+
         self.last_transc_time = time.time()
-
-        self.add_to_stt_output = ""
+        self.running = True
 
     @property
     def streaming_config(self):
@@ -61,60 +59,63 @@ class ThreadManager:
             if not self.running:
                 break
 
-            if not response.results:
+            if not response.results or not (result := response.results[0]).alternatives:
                 continue
 
-            result = response.results[0]
-            if not result.alternatives:
-                continue
-
+            # If nobody talks and then the conversation start again -> clear previous subtitles
             if time.time() - self.last_transc_time > TIME_BETWEEN_SENTENCES:
-                self.add_to_stt_output = ""
+                self.prefix_stt_output = []
             self.last_transc_time = time.time()
 
-            output = result.alternatives[0].transcript
+            output_raw = result.alternatives[0].transcript
+            output = split_text(output_raw, self.lang_audio)
 
-            # more stability in the output to avoid changes far away in the transcription
-            output_split = output.split(" ")
-            if len(self.prev_output_stt) > len(output_split):
-                output_split = self.prev_output_stt
-            elif len(self.prev_output_stt) > 3:
-                output_split = self.prev_output_stt[:-3] + output_split[len(self.prev_output_stt)-3:]
-            output = " ".join(output_split)
-            self.prev_output_stt = output_split
+            # stabilize the beginning of the output sentences to avoid changes of words that are too far
+            if len(self.prev_output_stt) > len(output):
+                output = self.prev_output_stt
+            elif len(self.prev_output_stt) > STABILITY_MARGIN:
+                output = self.prev_output_stt[:-STABILITY_MARGIN] + output[len(self.prev_output_stt)-STABILITY_MARGIN:]
 
+            # add a prefix to the intermediate output (useful in case final transcripts arrived too fast)
             if result.is_final:
-                # potentially add the previous transcript outputs (usefull when final transcripts are computed too fast)
-                self.prev_transcs.append([output, time.time()])
-                for transc in self.prev_transcs:
-                    if time.time() - transc[1] > TIME_BETWEEN_SENTENCES:
-                        self.prev_transcs.remove(transc)
-                self.add_to_stt_output = " ".join([transc for transc, _ in self.prev_transcs])
+                self.latest_final_transcs.append([output, time.time()])
+                self.latest_final_transcs = [
+                    transc_data for transc_data in self.latest_final_transcs
+                    if time.time() - transc_data[1] <= TIME_BETWEEN_SENTENCES
+                ]
+                self.prefix_stt_output = [w for transc,_ in self.latest_final_transcs for w in transc]
 
-                # clear previous inter output
-                self.prev_output_stt = []
-            else:
-                self.prev_transc = [result.alternatives[0].transcript, time.time()]
-
-            self.output_stt = self.add_to_stt_output + output
+            self.output_stt = self.prefix_stt_output + output
+            self.prev_output_stt = [] if result.is_final else output
 
     def translate(self):
         while self.running:
-            # check if the transcription changed
+            # check if the transcription has changed
             if self.output_stt and self.output_stt != self.prev_input_transl:
                 self.prev_input_transl = self.output_stt
+                input_transl = join_text(self.output_stt, self.lang_audio)
 
                 response = self.transl_client.translate_text(
-                    contents=[self.output_stt],
+                    contents=[input_transl],
                     target_language_code=self.lang_transl,
                     source_language_code=self.lang_audio,
                     parent=f"projects/{PROJECT_ID}/locations/global"
                 )
 
-                self.output_transl = response.translations[0].translated_text
+                output_raw = response.translations[0].translated_text
+                output = split_text(output_raw, self.lang_transl)
+
+                # stabilize the beginning of the output sentences to avoid changes of words that are too far
+                if len(self.prev_output_transl) > len(output):
+                    output = self.prev_output_transl
+                elif len(self.prev_output_transl) > STABILITY_MARGIN:
+                    output = self.prev_output_transl[:-STABILITY_MARGIN] + output[len(self.prev_output_transl)-STABILITY_MARGIN:]
+
+                self.output_transl = output
+                self.prev_output_transl = output
 
             time.sleep(REFRESH_TRANSLATE_RATE)
-    
+
     def start(self):
         if not self.thread_stt.is_alive():
             self.thread_stt.start()

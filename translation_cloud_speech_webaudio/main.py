@@ -5,7 +5,7 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode
 
 from utils.parameters import DEFAULT_AUDIO_LANG, DEFAULT_TRANS_LANG, REFRESH_RATE_FAST, REFRESH_RATE_SLOW
 from utils.lang_list import LANGUAGE_CODES
-from utils.display import get_html_subt, format_subt
+from utils.display import get_html_subt, format_subt, join_text
 from utils.streamlit_utils import shutdown_app
 from utils.logs import print_logs_threads
 from thread_manager import ThreadManager, stop_all_threads
@@ -45,7 +45,7 @@ with col2:
     lang_transl = st.selectbox("Translation language", lang_keys, key="lang_transl")
 
 LANG_AUDIO = LANGUAGE_CODES[lang_audio]
-LANG_TRANSL = LANGUAGE_CODES[lang_transl][:2]
+LANG_TRANSL = LANGUAGE_CODES[lang_transl]
 
 
 #------- select device -------#
@@ -68,19 +68,19 @@ with col_transl:
     transl_box = st.empty()
 
 
+#------- stopping speech and translation threads -------#
+print_logs_threads("Threads before stop_all_threads (before running while)")
+stop_all_threads()
+print_logs_threads("Threads after stop_all_threads (before running while)")
+
 if ctx and ctx.audio_processor:
 
     #------- parallel threads for STT and translation -------#
-    print_logs_threads("Threads before stop_all_threads (before running while)")
-    stop_all_threads()
-    print_logs_threads("Threads after stop_all_threads (before running while)")
-
     st.session_state.threads = ThreadManager(LANG_AUDIO, LANG_TRANSL, ctx.audio_processor)
-    st.session_state.threads.start()
+    print_logs_threads("Threads after creating threads (before running while)")
 
     threads = st.session_state.threads
-
-    print_logs_threads("Threads after creating threads (before running while)")
+    threads.start()
 
 
     #----- streamlit display updates -----#
@@ -92,7 +92,7 @@ if ctx and ctx.audio_processor:
 
         # transcription
         line_scroll_transc = new_line_transc and not has_one_line_transc
-        html_transc = get_html_subt(prev_transc, transc, line_scroll_transc, subt_type="transc")
+        html_transc = get_html_subt(join_text(prev_transc, LANG_AUDIO), join_text(transc, LANG_AUDIO), line_scroll_transc, subt_type="transc")
         transc_box.markdown(html_transc, unsafe_allow_html=True)
 
         if new_line_transc and has_one_line_transc:
@@ -102,7 +102,7 @@ if ctx and ctx.audio_processor:
 
         # translation
         line_scroll_transl = new_line_transl and not has_one_line_transl
-        html_transl = get_html_subt(prev_transl, transl, line_scroll_transl, subt_type="transl")
+        html_transl = get_html_subt(join_text(prev_transl, LANG_TRANSL), join_text(transl, LANG_TRANSL), line_scroll_transl, subt_type="transl")
         transl_box.markdown(html_transl, unsafe_allow_html=True)
 
         if new_line_transl and has_one_line_transl:

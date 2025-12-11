@@ -1,5 +1,6 @@
 # App parameters
 MAX_LEN = 10
+STABILITY_MARGIN = 3  # Number of words displayed that can be modified (previous ones are frozen)
 REFRESH_RATE_FAST = 0.1
 REFRESH_RATE_SLOW = 0.3
 REFRESH_TRANSLATE_RATE = 0.1
@@ -17,3 +18,4 @@ LOG_TITLE = "[Logs]"
 # Audio stream
 SR = 16000
 CHUNK = int(SR / 10)
+TIME_BETWEEN_SENTENCES = 4
