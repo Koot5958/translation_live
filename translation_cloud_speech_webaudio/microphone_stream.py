@@ -41,25 +41,6 @@ class AudioProcessor(AudioProcessorBase):
         audio_mono_16k = resample_poly(audio_mono, up=self._rate, down=frames.sample_rate)
         self.fill_buffer(audio_mono_16k)
         return frames
-    
-    """async def recv_queued(self, frames):
-        if not frames:
-            return frames
-        
-        chunks = []
-        for frame in frames:
-            arr = frame.to_ndarray()
-            audio_float = self._to_float32(arr)
-            audio_mono = self._to_mono(audio_float, frame).astype(np.float32)
-            audio_mono_16k = resample_poly(audio_mono, up=self.sr, down=frame.sample_rate)
-            chunks.append(audio_mono_16k)
-
-        if chunks:
-            segment = np.concatenate(chunks)
-            self.fill_buffer(segment)
-
-        return frames"""
-
 
     def fill_buffer(self, audio):
         audio_int16 = (audio * 32767).astype(np.int16)
@@ -72,7 +53,6 @@ class AudioProcessor(AudioProcessorBase):
 
             self.buffer.put(audio_bytes)
             self._temp_buffer = []
-
 
     def generator(self):
         while self.running:
