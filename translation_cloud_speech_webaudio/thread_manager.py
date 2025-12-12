@@ -5,7 +5,7 @@ import streamlit as st
 from google.cloud import speech
 from google.cloud import translate_v3
 
-from utils.parameters import THREAD_NAMES, REFRESH_TRANSLATE_RATE, SR, STABILITY_MARGIN, TIME_BETWEEN_SENTENCES
+from utils.parameters import THREAD_NAMES, REFRESH_TRANSLATE_RATE, SR, STABILITY_MARGIN, TIME_BETWEEN_SENTENCES, STREAMING_LIMIT
 from utils.logs import print_logs
 from utils.display import split_text, join_text
 
@@ -18,7 +18,9 @@ class ThreadManager:
         self.transc_client = speech.SpeechClient()
         self.transl_client = translate_v3.TranslationServiceClient()
 
-        self.thread_stt = threading.Thread(target=self.speech_to_text, args=(audio_processor,), name=THREAD_NAMES[0])
+        self.audio_processor = audio_processor
+
+        self.thread_stt = threading.Thread(target=self.speech_to_text, name=THREAD_NAMES[0])
         self.thread_transl = threading.Thread(target=self.translate, name=THREAD_NAMES[1])
 
         self.output_stt, self.output_transl = [], []
@@ -31,6 +33,7 @@ class ThreadManager:
         self.lang_audio, self.lang_transl = lang_audio, lang_transl
 
         self.last_transc_time = time.time()
+        self.start_time = time.time()
         self.running = True
 
     @property
@@ -48,45 +51,53 @@ class ThreadManager:
             interim_results=True,
         )
 
-    def speech_to_text(self, audio_processor):
-        audio_generator = audio_processor.generator()
-        requests = (
-            speech.StreamingRecognizeRequest(audio_content=content)
-            for content in audio_generator
-        )
-        responses = self.transc_client.streaming_recognize(self.streaming_config, requests)
-        for response in responses:
-            if not self.running:
-                break
+    def speech_to_text(self):
+        while self.running:
+            self.start_time = time.time()
+            print_logs("Start STT process...")
 
-            if not response.results or not (result := response.results[0]).alternatives:
-                continue
+            self.audio_processor.inter_process = False
+            generator = self.audio_processor.generator()
+            requests = (
+                speech.StreamingRecognizeRequest(audio_content=content)
+                for content in generator
+            )
+            responses = self.transc_client.streaming_recognize(self.streaming_config, requests)
 
-            # If nobody talks and then the conversation start again -> clear previous subtitles
-            if time.time() - self.last_transc_time > TIME_BETWEEN_SENTENCES:
-                self.prefix_stt_output = []
-            self.last_transc_time = time.time()
+            for response in responses:
+                if not self.running or (time.time() - self.start_time) > STREAMING_LIMIT:
+                    print_logs("Stop STT process...")
+                    self.audio_processor.inter_process = True
+                    break
 
-            output_raw = result.alternatives[0].transcript
-            output = split_text(output_raw, self.lang_audio)
+                if not response.results or not (result := response.results[0]).alternatives:
+                    continue
 
-            # stabilize the beginning of the output sentences to avoid changes of words that are too far
-            if len(self.prev_output_stt) > len(output):
-                output = self.prev_output_stt
-            elif len(self.prev_output_stt) > STABILITY_MARGIN:
-                output = self.prev_output_stt[:-STABILITY_MARGIN] + output[len(self.prev_output_stt)-STABILITY_MARGIN:]
+                # If nobody talks and then the conversation start again -> clear previous subtitles
+                if time.time() - self.last_transc_time > TIME_BETWEEN_SENTENCES:
+                    self.prefix_stt_output = []
+                self.last_transc_time = time.time()
 
-            # add a prefix to the intermediate output (useful in case final transcripts arrived too fast)
-            if result.is_final:
-                self.latest_final_transcs.append([output, time.time()])
-                self.latest_final_transcs = [
-                    transc_data for transc_data in self.latest_final_transcs
-                    if time.time() - transc_data[1] <= TIME_BETWEEN_SENTENCES
-                ]
-                self.prefix_stt_output = [w for transc,_ in self.latest_final_transcs for w in transc]
+                output_raw = result.alternatives[0].transcript
+                output = split_text(output_raw, self.lang_audio)
 
-            self.output_stt = self.prefix_stt_output + output
-            self.prev_output_stt = [] if result.is_final else output
+                # stabilize the beginning of the output sentences to avoid changes of words that are too far
+                if len(self.prev_output_stt) > len(output):
+                    output = self.prev_output_stt
+                elif len(self.prev_output_stt) > STABILITY_MARGIN:
+                    output = self.prev_output_stt[:-STABILITY_MARGIN] + output[len(self.prev_output_stt)-STABILITY_MARGIN:]
+
+                # add a prefix to the intermediate output (useful in case final transcripts arrived too fast)
+                if result.is_final:
+                    self.latest_final_transcs.append([output, time.time()])
+                    self.latest_final_transcs = [
+                        transc_data for transc_data in self.latest_final_transcs
+                        if time.time() - transc_data[1] <= TIME_BETWEEN_SENTENCES
+                    ]
+                    self.prefix_stt_output = [w for transc,_ in self.latest_final_transcs for w in transc]
+
+                self.output_stt = self.prefix_stt_output + output
+                self.prev_output_stt = [] if result.is_final else output
 
     def translate(self):
         while self.running:

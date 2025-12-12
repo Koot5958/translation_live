@@ -12,6 +12,7 @@ class AudioProcessor(AudioProcessorBase):
         self.buffer = queue.Queue()
         self._temp_buffer = []
         self.running = True
+        self.inter_process = False
 
     def _to_float32(self, data: np.ndarray) -> np.ndarray:
         if np.issubdtype(data.dtype, np.integer):
@@ -52,7 +53,7 @@ class AudioProcessor(AudioProcessorBase):
             self._temp_buffer = []
 
     def generator(self):
-        while self.running:
+        while self.running and not self.inter_process:
             # Use a blocking get() to ensure there's at least one chunk of
             # data, and stop iteration if the chunk is None, indicating the
             # end of the audio stream.
