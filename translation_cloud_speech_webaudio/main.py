@@ -20,6 +20,8 @@ if st.session_state.get("shutdown", False):
 st.set_page_config(layout="wide")
 st.title("Transcription and translation")
 
+
+#------- Rerun and stop buttons -------#
 col_close, col_rerun, _, _, _, _, _, _, _, _ = st.columns(10, gap=None)
 with col_close:
     if st.button("Close App"):
@@ -38,17 +40,17 @@ lang_keys = list(LANGUAGE_CODES.keys())
 st.session_state.setdefault("lang_audio", DEFAULT_AUDIO_LANG)
 st.session_state.setdefault("lang_transl", DEFAULT_TRANS_LANG)
 
-col1, col2 = st.columns(2)
-with col1:
+col_transc_lang, col_transl_lang = st.columns(2)
+with col_transc_lang:
     lang_audio = st.selectbox("Audio language", lang_keys, key="lang_audio")
-with col2:
+with col_transl_lang:
     lang_transl = st.selectbox("Translation language", lang_keys, key="lang_transl")
 
 LANG_AUDIO = LANGUAGE_CODES[lang_audio]
 LANG_TRANSL = LANGUAGE_CODES[lang_transl]
 
 
-#------- select device -------#
+#------- audio capture -------#
 ctx = webrtc_streamer(
     key="audio",
     mode=WebRtcMode.SENDONLY,
@@ -59,7 +61,7 @@ ctx = webrtc_streamer(
 )
 
 
-#------- display init -------#
+#------- transcription and translation display initialization -------#
 transc, transl, prev_transc, prev_transl = [], [], [], []
 col_transc, col_transl = st.columns(2)
 with col_transc:
@@ -68,14 +70,15 @@ with col_transl:
     transl_box = st.empty()
 
 
-#------- stopping speech and translation threads -------#
+#------- stopping STT and translation threads -------#
 print_logs_threads("Threads before stop_all_threads (before running while)")
 stop_all_threads()
 print_logs_threads("Threads after stop_all_threads (before running while)")
 
+
 if ctx and ctx.audio_processor:
 
-    #------- parallel threads for STT and translation -------#
+    #------- start STT and translation threads -------#
     st.session_state.threads = ThreadManager(LANG_AUDIO, LANG_TRANSL, ctx.audio_processor)
     print_logs_threads("Threads after creating threads (before running while)")
 
@@ -83,7 +86,7 @@ if ctx and ctx.audio_processor:
     threads.start()
 
 
-    #----- streamlit display updates -----#
+    #----- real-time update of transcription and translation -----#
     has_one_line_transc, has_one_line_transl = True, True
     while threads.running:
 
@@ -95,20 +98,17 @@ if ctx and ctx.audio_processor:
         html_transc = get_html_subt(join_text(prev_transc, LANG_AUDIO), join_text(transc, LANG_AUDIO), line_scroll_transc, subt_type="transc")
         transc_box.markdown(html_transc, unsafe_allow_html=True)
 
-        if new_line_transc and has_one_line_transc:
+        if new_line_transc:
             has_one_line_transc = False
-
-        waiting_time_transc = REFRESH_RATE_SLOW if line_scroll_transc else REFRESH_RATE_FAST
 
         # translation
         line_scroll_transl = new_line_transl and not has_one_line_transl
         html_transl = get_html_subt(join_text(prev_transl, LANG_TRANSL), join_text(transl, LANG_TRANSL), line_scroll_transl, subt_type="transl")
         transl_box.markdown(html_transl, unsafe_allow_html=True)
 
-        if new_line_transl and has_one_line_transl:
+        if new_line_transl:
             has_one_line_transl = False
 
-        waiting_time_transl = REFRESH_RATE_SLOW if line_scroll_transl else REFRESH_RATE_FAST
-
         # waiting time
-        time.sleep(max(waiting_time_transc, waiting_time_transl))
+        waiting_time = REFRESH_RATE_SLOW if (line_scroll_transc or line_scroll_transl) else REFRESH_RATE_FAST
+        time.sleep(waiting_time)
